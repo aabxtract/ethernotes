@@ -14,6 +14,35 @@ export default {
         headline: ['Poppins', 'sans-serif'],
         code: ['monospace'],
       },
+      typography: (theme: (arg0: string) => any) => ({
+        DEFAULT: {
+          css: {
+            color: theme('colors.foreground'),
+            a: {
+              color: theme('colors.primary.DEFAULT'),
+              '&:hover': {
+                color: theme('colors.primary.DEFAULT'),
+              },
+            },
+            'h1,h2,h3,h4,h5,h6': {
+              color: theme('colors.foreground'),
+            },
+            strong: {
+              color: theme('colors.foreground'),
+            },
+            code: {
+              color: theme('colors.primary.DEFAULT'),
+              backgroundColor: theme('colors.muted'),
+              padding: '0.2rem 0.4rem',
+              borderRadius: '0.2rem',
+            },
+            blockquote: {
+              color: theme('colors.muted-foreground'),
+              borderLeftColor: theme('colors.border'),
+            },
+          },
+        },
+      }),
       colors: {
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
@@ -95,5 +124,5 @@ export default {
       },
     },
   },
-  plugins: [require('tailwindcss-animate')],
+  plugins: [require('tailwindcss-animate'), require('@tailwindcss/typography')],
 } satisfies Config;

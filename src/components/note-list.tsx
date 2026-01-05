@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
 import { BookMarked, AlertTriangle } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 type Note = {
   author: Address;
@@ -70,7 +72,9 @@ export function NoteList({ userAddress }: { userAddress: Address }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-foreground whitespace-pre-wrap">{note.content}</p>
+            <article className="prose prose-sm dark:prose-invert max-w-none">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{note.content}</ReactMarkdown>
+            </article>
           </CardContent>
         </Card>
       ))}
