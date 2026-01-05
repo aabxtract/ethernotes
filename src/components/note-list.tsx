@@ -1,20 +1,100 @@
 'use client';
 
-import { useReadContract } from 'wagmi';
-import { etherNotesABI, etherNotesAddress } from '@/lib/contracts';
+import { useReadContract, useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { etherNotesABI, etherNotesAddress, etherNoteNFTAddress, etherNoteNFTABI } from '@/lib/contracts';
 import { Address } from 'viem';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
-import { BookMarked, AlertTriangle } from 'lucide-react';
+import { BookMarked, AlertTriangle, Loader2, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Button } from './ui/button';
+import { useToast } from '@/hooks/use-toast';
+import { useEffect, useState } from 'react';
 
 type Note = {
   author: Address;
   content: string;
   timestamp: bigint;
 };
+
+function NoteCard({ note }: { note: Note }) {
+  const { address } = useAccount();
+  const { toast } = useToast();
+  const [isMinting, setIsMinting] = useState(false);
+
+  const { data: hash, writeContract, reset, error: mintError } = useWriteContract();
+
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
+
+  const handleMint = () => {
+    if (!address) return;
+    setIsMinting(true);
+    writeContract({
+      address: etherNoteNFTAddress,
+      abi: etherNoteNFTABI,
+      functionName: 'mintNote',
+      args: [address, note.content, note.timestamp],
+    });
+  };
+
+  useEffect(() => {
+    if (isConfirmed) {
+      toast({
+        title: "NFT Minted!",
+        description: "Your note has been immortalized as an NFT.",
+      });
+      setIsMinting(false);
+      reset();
+    }
+    if (mintError) {
+      toast({
+        title: "Minting Error",
+        description: mintError.shortMessage || "An error occurred while minting.",
+        variant: 'destructive',
+      });
+      setIsMinting(false);
+      reset();
+    }
+  }, [isConfirmed, mintError, toast, reset]);
+  
+  const isMintButtonDisabled = isMinting || isConfirming;
+
+  return (
+    <Card className="shadow-md transition-shadow hover:shadow-xl">
+      <CardHeader>
+        <CardDescription>
+          {formatDistanceToNow(new Date(Number(note.timestamp) * 1000), { addSuffix: true })}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <article className="prose prose-sm dark:prose-invert max-w-none">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{note.content}</ReactMarkdown>
+        </article>
+      </CardContent>
+      {address === note.author && (
+        <CardFooter>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="ml-auto" 
+            onClick={handleMint}
+            disabled={isMintButtonDisabled}
+          >
+            {isConfirming ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="mr-2 h-4 w-4" />
+            )}
+            {isConfirming ? 'Minting...' : isMinting ? 'Awaiting...' : 'Mint as NFT'}
+          </Button>
+        </CardFooter>
+      )}
+    </Card>
+  )
+}
+
 
 export function NoteList({ userAddress }: { userAddress: Address }) {
   const { data: notes, isLoading, error } = useReadContract({
@@ -63,20 +143,9 @@ export function NoteList({ userAddress }: { userAddress: Address }) {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-bold text-center">Your Notes</h2>
+      <h2 className="text-2xl font-bold text-center">Notes</h2>
       {reversedNotes.map((note, index) => (
-        <Card key={index} className="shadow-md transition-shadow hover:shadow-xl">
-          <CardHeader>
-            <CardDescription>
-              {formatDistanceToNow(new Date(Number(note.timestamp) * 1000), { addSuffix: true })}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <article className="prose prose-sm dark:prose-invert max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{note.content}</ReactMarkdown>
-            </article>
-          </CardContent>
-        </Card>
+        <NoteCard key={`${note.timestamp}-${index}`} note={note} />
       ))}
     </div>
   );
