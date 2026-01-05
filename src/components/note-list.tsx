@@ -6,12 +6,14 @@ import { Address } from 'viem';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
-import { BookMarked, AlertTriangle, Loader2, Sparkles } from 'lucide-react';
+import { BookMarked, AlertTriangle, Loader2, Sparkles, Lock, ShieldQuestion } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Button } from './ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect, useState } from 'react';
+import EthCrypto from 'eth-crypto';
+import { decryptMessage } from '@/lib/crypto';
 
 type Note = {
   author: Address;
@@ -23,6 +25,38 @@ function NoteCard({ note }: { note: Note }) {
   const { address } = useAccount();
   const { toast } = useToast();
   const [isMinting, setIsMinting] = useState(false);
+  const [decryptedContent, setDecryptedContent] = useState<string | null>(null);
+  const [isDecrypting, setIsDecrypting] = useState(false);
+
+  const isAuthor = address === note.author;
+  const isEncrypted = note.content.startsWith('encrypted::');
+
+  useEffect(() => {
+    if (isEncrypted && isAuthor && !decryptedContent) {
+      // Automatically try to decrypt if the user is the author
+      handleDecrypt();
+    }
+  }, [isEncrypted, isAuthor, decryptedContent]);
+
+  const handleDecrypt = async () => {
+    setIsDecrypting(true);
+    try {
+      const encryptedString = note.content.replace('encrypted::', '');
+      const encryptedObject = EthCrypto.cipher.parse(encryptedString);
+      const decrypted = await decryptMessage(encryptedObject);
+      setDecryptedContent(decrypted);
+    } catch (e) {
+      console.error(e);
+      toast({
+        title: 'Decryption failed',
+        description: 'Could not decrypt this note. You might need to sign a message in your wallet.',
+        variant: 'destructive',
+      });
+      setDecryptedContent('Could not decrypt note.');
+    } finally {
+      setIsDecrypting(false);
+    }
+  };
 
   const { data: hash, writeContract, reset, error: mintError } = useWriteContract();
 
@@ -30,6 +64,14 @@ function NoteCard({ note }: { note: Note }) {
 
   const handleMint = () => {
     if (!address) return;
+    if (isEncrypted) {
+      toast({
+        title: "Can't mint private note",
+        description: "NFTs are public. Please create a public note to mint it.",
+        variant: 'destructive',
+      });
+      return;
+    }
     setIsMinting(true);
     writeContract({
       address: etherNoteNFTAddress,
@@ -59,21 +101,47 @@ function NoteCard({ note }: { note: Note }) {
     }
   }, [isConfirmed, mintError, toast, reset]);
   
-  const isMintButtonDisabled = isMinting || isConfirming;
+  const isMintButtonDisabled = isMinting || isConfirming || isEncrypted;
+
+  const displayContent = isEncrypted ? (decryptedContent || 'This note is encrypted.') : note.content;
 
   return (
     <Card className="shadow-md transition-shadow hover:shadow-xl">
-      <CardHeader>
+      <CardHeader className="flex flex-row justify-between items-start">
         <CardDescription>
           {formatDistanceToNow(new Date(Number(note.timestamp) * 1000), { addSuffix: true })}
         </CardDescription>
+        {isEncrypted && (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Lock className="h-4 w-4" />
+            <span className="text-xs">Private</span>
+          </div>
+        )}
       </CardHeader>
       <CardContent>
-        <article className="prose prose-sm dark:prose-invert max-w-none">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{note.content}</ReactMarkdown>
-        </article>
+         {isEncrypted && !decryptedContent && isAuthor && (
+          <div className="flex flex-col items-center justify-center text-center p-4 rounded-lg bg-muted/50">
+            <p className="mb-2 text-sm">This private note is encrypted.</p>
+            <Button onClick={handleDecrypt} disabled={isDecrypting} variant="secondary" size="sm">
+              {isDecrypting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Unlock className="mr-2 h-4 w-4" />}
+              {isDecrypting ? 'Decrypting...' : 'Decrypt to View'}
+            </Button>
+          </div>
+        )}
+        {isEncrypted && !isAuthor && (
+          <div className="flex flex-col items-center justify-center text-center p-4 rounded-lg bg-muted/50">
+            <ShieldQuestion className="h-8 w-8 text-muted-foreground mb-2" />
+            <p className="text-sm font-medium">This is a private note.</p>
+            <p className="text-xs text-muted-foreground">Only the author can view its content.</p>
+          </div>
+        )}
+        {(!isEncrypted || decryptedContent) && (
+          <article className="prose prose-sm dark:prose-invert max-w-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayContent}</ReactMarkdown>
+          </article>
+        )}
       </CardContent>
-      {address === note.author && (
+      {isAuthor && (
         <CardFooter>
           <Button 
             variant="outline" 
@@ -81,6 +149,7 @@ function NoteCard({ note }: { note: Note }) {
             className="ml-auto" 
             onClick={handleMint}
             disabled={isMintButtonDisabled}
+            title={isEncrypted ? "Private notes cannot be minted as NFTs" : "Mint as NFT"}
           >
             {isConfirming ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
